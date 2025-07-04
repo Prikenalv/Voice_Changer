@@ -1,3 +1,6 @@
+Make sure you have this things installed in your desktop.
+"pip install" them all
+
 customtkinter==5.2.0
 sounddevice==0.4.6
 numpy==1.24.3
