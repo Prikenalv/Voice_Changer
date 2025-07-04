@@ -6,7 +6,7 @@
 * On Import - Bigger files can't be imported (Not an issue)
 * On Export - You can't export as mp3 file, just WAV file
 * There's a huge space on the right side and im lazy to fix it, maybe we'll just minimize the window
-* Input/Output Devices are fixed. We need to make it dynamic.
+* Input/Output Devices are static. We need to make it dynamic.
 
 
 ## 🎙️DSP Voice Changer – A Real-Time Audio Effects Processor
