@@ -160,6 +160,59 @@ class VoiceChangerApp:
             width=100
         )
         self.export_button.pack(side="left", padx=5)
+
+
+        # Device IO
+
+
+        self.device_frame = ctk.CTkFrame(left_panel)
+        self.device_frame.pack(fill="both", expand=True, pady=(0, 10))
+
+        self.device_label = ctk.CTkLabel(self.device_frame, text="Devices", font=ctk.CTkFont(size=16))
+        self.device_label.pack(pady=(0, 10))
+
+        
+
+        input_frame = ctk.CTkFrame(self.device_frame, fg_color='transparent')
+        input_frame.pack(fill='x')
+
+        self.input_label = ctk.CTkLabel(input_frame, text="Input: ", font=ctk.CTkFont(size=16))
+        self.input_label.pack(side='left',padx=(0,5))
+        # idk happening but it works :D
+        input_device, output_device = self.recorder.get_devices()
+        input_text = [i[1] for i in input_device]
+        output_text = [i[1] for i in output_device]
+        # ---------------
+
+        input_current = next((name for i, name in input_device if i == self.recorder.input_device), "None")
+        self.input_device_variable = ctk.StringVar(value=input_current)
+        self.input_device_menu = ctk.CTkOptionMenu(
+            input_frame,
+            values= input_text,
+            variable=self.input_device_variable,
+            command=self.update_device
+        )
+
+        self.input_device_menu.pack(fill='x',side='left',expand=True)
+
+        output_frame = ctk.CTkFrame(self.device_frame, fg_color='transparent')
+        output_frame.pack(fill='x')
+
+        self.output_label = ctk.CTkLabel(output_frame, text="Output: ", font=ctk.CTkFont(size=16))
+        self.output_label.pack(side='left', padx=(0,5))
+
+        output_current = next((name for i, name in output_device if i == self.recorder.output_device), "None")
+        self.output_device_variable = ctk.StringVar(value=output_current)
+        self.output_device_menu = ctk.CTkOptionMenu(
+            output_frame,
+            values= output_text,
+            variable=self.output_device_variable,
+            command=self.update_device
+        )
+
+        self.output_device_menu.pack(fill='x',side='left',expand=True)
+
+
         
         # Effects
         self.effects_frame = ctk.CTkFrame(left_panel)
@@ -411,7 +464,6 @@ class VoiceChangerApp:
                 self.is_playing = True
                 self.is_recording = False
                 self.set_button_states(playing=True)
-                # Start polling for playback completion
                 self.root.after(100, self.check_playback_status)
             else:
                 self.stop_audio()
@@ -423,7 +475,6 @@ class VoiceChangerApp:
         self.play_button.configure(command=self.play_audio)
     
     def poll_playback_end(self):
-        # Poll to check if playback has ended, then reset play button
         if not self.recorder.get_playback_status():
             self.is_playing = False
             self.set_button_states(can_play=self.processed_audio is not None)
@@ -566,6 +617,17 @@ class VoiceChangerApp:
                 self.save_current_effects_state()
                 self.process_audio()
 
+    def update_device(self, _=None):
+        I,O = self.recorder.get_devices()
+
+        current_input = self.input_device_menu.get()
+        current_output = self.output_device_menu.get()
+
+        getInputID = next((i for i, name in I if name == current_input),None)
+        getOutputID = next((i for i, name in O if name == current_output),None)
+
+        self.recorder.update_IO_device(getInputID,getOutputID)
+
     def save_current_effects_state(self):
         # Save the current slider and filter values to internal state
         self.current_effects_state = {
@@ -613,8 +675,6 @@ class VoiceChangerApp:
         except Exception as e:
             print(f"Processing error: {str(e)}")
 
-        
-    
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
