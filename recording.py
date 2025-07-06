@@ -1,3 +1,4 @@
+import time
 import sounddevice as sd
 import numpy as np
 import threading
@@ -17,8 +18,13 @@ class AudioRecorder:
         self.stream = None
         
         # Playback state
-        self.is_playing = False
+        self.is_playback_paused = False
         self.playback_thread = None
+        self.is_playback_stopped = False
+        self.Ostream = None
+
+        # Pause
+        self.is_recording_paused = True
         
         # Audio device settings
         self.input_device = None
@@ -30,17 +36,41 @@ class AudioRecorder:
     def _setup_audio_devices(self):
         """Setup audio input and output devices"""
         try:
-            devices = sd.query_devices()
+            self.devices = sd.query_devices()
             default_input = sd.default.device[0]
             default_output = sd.default.device[1]
             
             self.input_device = default_input
             self.output_device = default_output
-            print(f"Using input device: {devices[default_input]['name']}")
-            print(f"Using output device: {devices[default_output]['name']}")
+            print(f"Using input device: {self.devices[default_input]['name']}")
+            print(f"Using output device: {self.devices[default_output]['name']}")
             
         except Exception as e:
             print(f"Error setting up audio devices: {e}")
+    
+    def get_devices(self):
+        input_device = []
+        output_device = []
+
+        for i, dev in enumerate(self.devices):
+            if dev['max_input_channels'] > 0:
+                try:
+                    with sd.InputStream(device=i, channels=1, samplerate=44100):
+                        input_device.append((i, dev['name']))
+                except Exception:
+                    pass
+            if dev['max_output_channels'] > 0:
+                try:
+                    with sd.OutputStream(device=i, channels=1, samplerate=44100):
+                        output_device.append((i, dev['name']))
+                except Exception:
+                    pass
+
+        return input_device, output_device
+
+    def update_IO_device(self, input, output):
+        self.input_device = input
+        self.output_device = output
     
     def start_recording(self):
         """Start recording audio from microphone"""
@@ -48,6 +78,7 @@ class AudioRecorder:
             return
             
         self.is_recording = True
+        self.is_recording_paused = False
         self.audio_buffer = []
         self.recording_thread = threading.Thread(target=self._record_audio, daemon=True)
         self.recording_thread.start()
@@ -74,7 +105,7 @@ class AudioRecorder:
     def _record_audio(self):
         try:
             def callback(indata, frames, time, status):
-                if self.is_recording:
+                if self.is_recording and not self.is_recording_paused:
                     self.audio_buffer.append(indata.copy())
             
             self.stream = sd.InputStream(
@@ -97,10 +128,10 @@ class AudioRecorder:
     
     def play_audio(self, audio_data: np.ndarray):
         """Play audio data through speakers"""
-        if self.is_playing:
+        if self.is_playback_paused:
             return
             
-        self.is_playing = True
+        self.is_playback_paused = True
         
         # Start playback thread
         self.playback_thread = threading.Thread(
@@ -112,33 +143,65 @@ class AudioRecorder:
     
     def stop_playback(self):
         """Stop audio playback"""
-        if not self.is_playing:
+        if not self.is_playback_paused:
             return
             
-        self.is_playing = False
-        
+        self.is_playback_paused = False
+        self.is_playback_stopped = True
         if self.playback_thread:
             self.playback_thread.join(timeout=1.0)
+        
+        
+        
     
     def _play_audio(self, audio_data: np.ndarray):
         try:
+            
             if len(audio_data.shape) == 1:
                 audio_data = audio_data.reshape(-1, 1)
+
+            self.playback_index = 0
+            self.is_playback_paused = False
+            def callback(outdata, frames, time, status):
+                if self.is_playback_stopped:
+                    raise sd.CallbackStop()
+                if self.is_playback_paused:
+                    outdata.fill(0)
+                    return
+                end = self.playback_index + frames
+                chunk = audio_data[self.playback_index:end]
+
+                if len(chunk) < frames:
+                    outdata[:len(chunk)] = chunk
+                    outdata[len(chunk):].fill(0)
+                    raise sd.CallbackStop()
+                else:
+                    outdata[:] = chunk
+
+                self.playback_index += frames
+
                 
-            with sd.OutputStream(
+            
+            
+             
+            self.Ostream = sd.OutputStream(
                 device=self.output_device,
                 samplerate=self.sample_rate,
                 channels=1,
-                dtype=np.float32
-            ) as stream:
-                stream.write(audio_data)
-                
-            self.is_playing = False
+                dtype=np.float32,
+                callback=callback
+            )
+            self.Ostream.start()
+            while not self.is_playback_stopped:
+                time.sleep(0.05)
+            self.Ostream.stop()
+            self.Ostream.close()
+            self.Ostream = None
+            
         except Exception as e:
             print(f"Playback error: {e}")
-            self.is_playing = False
-    
-    # ... (rest of the methods remain the same)
+            self.is_playback_paused = False
+            self.is_playback_stopped = True
     
     def get_audio_devices(self) -> Tuple[list, list]:
         """Get available input and output devices"""
@@ -212,10 +275,10 @@ class AudioRecorder:
             print("Invalid sample rate")
     
     def pause_recording(self):
-        self.is_paused = True
+        self.is_recording_paused = True
 
     def resume_recording(self):
-        self.is_paused = False
+        self.is_recording_paused = False
 
     def pause_playback(self):
         self.is_playback_paused = True
